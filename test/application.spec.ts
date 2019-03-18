@@ -1,16 +1,21 @@
-import { Application as ExpressApp } from "express"
+import { Express, Application as ExpressApp, Response, NextFunction, Request } from "express"
 import { Application } from "../src";
 import { join } from "path";
 import bodyParser from "body-parser"
 import supertest from "supertest"
 
 describe("Application Test", () => {
-    let app: ExpressApp
+    let app: Express
 
     beforeAll(async () => {
+        //const globalHandler = 
         const application = new Application({ controllerPath: join(__dirname, "controller") })
         application.use(bodyParser.json())
         app = await application.initialize()
+        app.use((err:any, req:Request, res:Response, next:NextFunction) => {
+            res.status(err.status || 500)
+            res.send(err)
+        })
     })
 
     it("Should handle root request", () => {
@@ -62,5 +67,11 @@ describe("Application Test", () => {
         return supertest(app)
             .get("/query?msg=hello&offset=1")
             .expect(200, { msg: "hello", offset: "1" })
+    })
+
+    it("Should able to catch error", () => {
+        return supertest(app)
+            .get("/error")
+            .expect(500)
     })
 })

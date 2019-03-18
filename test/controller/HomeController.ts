@@ -16,4 +16,9 @@ export class HomeController {
     query(@bind.query() query:any){
         return query;
     }
+
+    @route.get("/error")
+    error(){
+        throw new Error("ERROR")
+    }
 }
