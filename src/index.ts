@@ -10,7 +10,7 @@ import { promisify } from "util"
 // ##################################################################### //
 
 type HttpMethod = "post" | "put" | "get" | "delete" | "patch"
-type BindingCallback = (req:Request) => any
+type BindingCallback = (req: Request) => any
 
 interface RouteMetadata {
     httpMethod: HttpMethod,
@@ -31,7 +31,7 @@ interface RouteConfiguration {
 }
 
 export interface Configuration {
-    controllerPath:string,
+    controllerPath: string,
 }
 
 // ##################################################################### //
@@ -54,46 +54,19 @@ function decorateRoute(httpMethod: HttpMethod, route: string): MethodDecorator {
 }
 
 export namespace route {
-    export function get(route: string): MethodDecorator {
-        return decorateRoute("get", route)
-    }
-
-    export function post(route: string): MethodDecorator {
-        return decorateRoute("post", route)
-    }
-
-    export function del(route: string): MethodDecorator {
-        return decorateRoute("delete", route)
-    }
-
-    export function put(route: string): MethodDecorator {
-        return decorateRoute("put", route)
-    }
-
-    export function patch(route: string): MethodDecorator {
-        return decorateRoute("patch", route)
-    }
+    export const get = (route: string) => decorateRoute("get", route)
+    export const post = (route: string) => decorateRoute("post", route)
+    export const del = (route: string) => decorateRoute("delete", route)
+    export const put = (route: string) => decorateRoute("put", route)
+    export const patch = (route: string) => decorateRoute("patch", route)
 }
 
 export namespace bind {
-    export function custom(callback:BindingCallback){
-        return decorateParameterBinding(callback)
-    }
-    export function request(): ParameterDecorator {
-        return custom(x => x)
-    }
-
-    export function query(): ParameterDecorator {
-        return custom(x => x.query)
-    }
-
-    export function body(): ParameterDecorator {
-        return custom(x => x.body)
-    }
-
-    export function params(): ParameterDecorator {
-        return custom(x => x.params)
-    }
+    export const custom = (callback: BindingCallback) => decorateParameterBinding(callback)
+    export const request = () => custom(x => x)
+    export const query = () => custom(x => x.query)
+    export const body = () => custom(x => x.body)
+    export const params = () => custom(x => x.params)
 }
 
 function getMethods(controller: any) {
@@ -129,15 +102,15 @@ async function getRouteConfiguration(dir: string) {
 // ############################### BINDER ############################## //
 // ##################################################################### //
 
-function parameterBinder(request:Request, config:RouteConfiguration){
-    const {controller, bindingCallbacks: parameterBinding, methodName} = config
+function parameterBinder(request: Request, config: RouteConfiguration) {
+    const { controller, bindingCallbacks: parameterBinding, methodName } = config
     const params = parameterBinding.map(bindingCallback => bindingCallback(request));
     const instance = new controller()
     return (instance[methodName] as Function).apply(controller, params)
 }
 
-function binder(config:RouteConfiguration){
-    return (request:Request) => parameterBinder(request, config)
+function binder(config: RouteConfiguration) {
+    return (request: Request) => parameterBinder(request, config)
 }
 
 // ##################################################################### //
@@ -146,12 +119,12 @@ function binder(config:RouteConfiguration){
 
 function createHandler(config: RouteConfiguration) {
     const binding = binder(config)
-    return async (req: Request, res: Response, next:NextFunction) => {
-        try{
+    return async (req: Request, res: Response, next: NextFunction) => {
+        try {
             const result = await Promise.resolve(binding(req))
             res.json(result)
         }
-        catch(e){
+        catch (e) {
             next(e)
         }
     }
@@ -175,13 +148,13 @@ function createRouter(configurations: RouteConfiguration[]) {
 
 export class Application {
     readonly app = express()
-    constructor(private configuration:Configuration){}
+    constructor(private configuration: Configuration) { }
 
-    use(...middleware:RequestHandler[]){
+    use(...middleware: RequestHandler[]) {
         return this.app.use(middleware)
     }
 
-    async initialize(){
+    async initialize() {
         const config = await getRouteConfiguration(this.configuration.controllerPath)
         const routes = createRouter(config)
         return this.app.use(routes)
