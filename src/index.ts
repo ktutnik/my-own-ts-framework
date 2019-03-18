@@ -10,7 +10,7 @@ import { promisify } from "util"
 // ##################################################################### //
 
 type HttpMethod = "post" | "put" | "get" | "delete" | "patch"
-type ParameterBinding = "request" | "body" | "query" | "params"
+type BindingCallback = (req:Request) => any
 
 interface RouteMetadata {
     httpMethod: HttpMethod,
@@ -18,14 +18,14 @@ interface RouteMetadata {
 }
 
 interface BindMetadata {
-    type: ParameterBinding
     index: number
+    bindingCallback: BindingCallback
 }
 
 interface RouteConfiguration {
     httpMethod: HttpMethod
     route: string
-    parameterBinding: ParameterBinding[]
+    bindingCallbacks: BindingCallback[]
     controller: any
     methodName: string
 }
@@ -41,10 +41,10 @@ export interface Configuration {
 const ROUTE_METADATA_KEY = "route"
 const BIND_METADATA_KEY = "bind"
 
-function decorateParameterBinding(type: ParameterBinding): ParameterDecorator {
+function decorateParameterBinding(bindingCallback: BindingCallback): ParameterDecorator {
     return (target, propName, index) => {
         const metadata: BindMetadata[] = Reflect.getMetadata(BIND_METADATA_KEY, target, propName) || []
-        metadata.push({ index, type })
+        metadata.push({ index, bindingCallback })
         Reflect.defineMetadata(BIND_METADATA_KEY, metadata, target, propName)
     }
 }
@@ -76,20 +76,23 @@ export namespace route {
 }
 
 export namespace bind {
+    export function custom(callback:BindingCallback){
+        return decorateParameterBinding(callback)
+    }
     export function request(): ParameterDecorator {
-        return decorateParameterBinding("request")
+        return custom(x => x)
     }
 
     export function query(): ParameterDecorator {
-        return decorateParameterBinding("query")
+        return custom(x => x.query)
     }
 
     export function body(): ParameterDecorator {
-        return decorateParameterBinding("body")
+        return custom(x => x.body)
     }
 
     export function params(): ParameterDecorator {
-        return decorateParameterBinding("params")
+        return custom(x => x.params)
     }
 }
 
@@ -103,7 +106,7 @@ function getRoute(controller: any, methodName: string): RouteConfiguration {
     const route: RouteMetadata = Reflect.getMetadata(ROUTE_METADATA_KEY, controller.prototype, methodName)
     return {
         ...route, methodName, controller,
-        parameterBinding: parameters.sort((a, b) => a.index - b.index).map(x => x.type)
+        bindingCallbacks: parameters.sort((a, b) => a.index - b.index).map(x => x.bindingCallback)
     }
 }
 
@@ -126,16 +129,9 @@ async function getRouteConfiguration(dir: string) {
 // ############################### BINDER ############################## //
 // ##################################################################### //
 
-const BindingLogic = {
-    "request": (request:Request) => request,
-    "query": (request:Request) => request.query,
-    "body": (request:Request) => request.body,
-    "params": (request:Request) => request.params
-}
-
 function parameterBinder(request:Request, config:RouteConfiguration){
-    const {controller, parameterBinding, methodName} = config
-    const params = parameterBinding.map(x => BindingLogic[x](request));
+    const {controller, bindingCallbacks: parameterBinding, methodName} = config
+    const params = parameterBinding.map(bindingCallback => bindingCallback(request));
     const instance = new controller()
     return (instance[methodName] as Function).apply(controller, params)
 }

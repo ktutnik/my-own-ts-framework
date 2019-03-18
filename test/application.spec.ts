@@ -8,7 +8,6 @@ describe("Application Test", () => {
     let app: Express
 
     beforeAll(async () => {
-        //const globalHandler = 
         const application = new Application({ controllerPath: join(__dirname, "controller") })
         application.use(bodyParser.json())
         app = await application.initialize()
