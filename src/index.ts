@@ -22,7 +22,12 @@ interface BindMetadata {
     bindingCallback: BindingCallback
 }
 
+interface DependencyResolver {
+    resolve(controller: any): any
+}
+
 interface RouteConfiguration {
+    resolver: DependencyResolver
     httpMethod: HttpMethod
     route: string
     bindingCallbacks: BindingCallback[]
@@ -32,6 +37,7 @@ interface RouteConfiguration {
 
 export interface Configuration {
     controllerPath: string,
+    resolver?: DependencyResolver
 }
 
 // ##################################################################### //
@@ -74,24 +80,24 @@ function getMethods(controller: any) {
         .filter(name => typeof controller[name] === "function" && name !== "constructor" && !~name.indexOf("__"))
 }
 
-function getRoute(controller: any, methodName: string): RouteConfiguration {
+function getRoute(controller: any, methodName: string, resolver: DependencyResolver): RouteConfiguration {
     const parameters: BindMetadata[] = Reflect.getMetadata(BIND_METADATA_KEY, controller.prototype, methodName) || []
     const route: RouteMetadata = Reflect.getMetadata(ROUTE_METADATA_KEY, controller.prototype, methodName)
     return {
-        ...route, methodName, controller,
+        ...route, methodName, controller, resolver,
         bindingCallbacks: parameters.sort((a, b) => a.index - b.index).map(x => x.bindingCallback)
     }
 }
 
-async function getRouteConfiguration(dir: string) {
-    const files = await promisify(readdir)(dir)
+async function getRouteConfiguration(config: Required<Configuration>) {
+    const files = await promisify(readdir)(config.controllerPath)
     const routes: RouteConfiguration[] = []
     for (const file of files) {
-        const theModule = require(join(dir, file))
+        const theModule = require(join(config.controllerPath, file))
         const controllers = Object.keys(theModule).map(x => theModule[x])
         for (const controller of controllers) {
             const methods = getMethods(controller.prototype)
-            const metadata = methods.map(x => getRoute(controller, x))
+            const metadata = methods.map(x => getRoute(controller, x, config.resolver))
             routes.push(...metadata)
         }
     }
@@ -103,9 +109,9 @@ async function getRouteConfiguration(dir: string) {
 // ##################################################################### //
 
 function parameterBinder(request: Request, config: RouteConfiguration) {
-    const { controller, bindingCallbacks: parameterBinding, methodName } = config
+    const { controller, bindingCallbacks: parameterBinding, methodName, resolver } = config
     const params = parameterBinding.map(bindingCallback => bindingCallback(request));
-    const instance = new controller()
+    const instance = resolver.resolve(controller)
     return (instance[methodName] as Function).apply(controller, params)
 }
 
@@ -146,6 +152,12 @@ function createRouter(configurations: RouteConfiguration[]) {
 // ########################## MAIN APPLICATION ######################### //
 // ##################################################################### //
 
+class DefaultDependencyResolver implements DependencyResolver {
+    resolve(controller: any) {
+        return new controller()
+    }
+}
+
 export class Application {
     readonly app = express()
     constructor(private configuration: Configuration) { }
@@ -155,8 +167,9 @@ export class Application {
     }
 
     async initialize() {
-        const config = await getRouteConfiguration(this.configuration.controllerPath)
-        const routes = createRouter(config)
+        const { resolver, ...appConfigs } = this.configuration
+        const routeConfigs = await getRouteConfiguration({ ...appConfigs, resolver: resolver || new DefaultDependencyResolver() })
+        const routes = createRouter(routeConfigs)
         return this.app.use(routes)
     }
 }
